@@ -6,9 +6,10 @@ from dowload_data import dataset_1, vehicles
 def gamma(f,t):
     res = 0
     w = (2*pi)/86400
+    vehicle_row = vehicles.loc[vehicles['family'] == f].iloc[0]
     for n in range (0,4): 
-        alpha_f_n = vehicles.iloc[f]['fourier_cos_'+ str(n)]
-        beta_f_n = vehicles.iloc[f]['fourier_sin_'+ str(n)]
+        alpha_f_n = vehicle_row['fourier_cos_'+ str(n)]
+        beta_f_n = vehicle_row['fourier_sin_'+ str(n)]
         res += alpha_f_n*cos(n*w*t) + beta_f_n*sin(n*w*t)
     return res
 
@@ -25,14 +26,15 @@ def convert_y(lambda_i, lambda_j):
 
 
 def travel_time(f,i,j,t): 
-    vehicle_idx = f - 1  
+    # vehicle_idx = f - 1  
     phi_i, lambda_i = dataset_1.iloc[i]['latitude'], dataset_1.iloc[i]['longitude']
     phi_j, lambda_j = dataset_1.iloc[j]['latitude'], dataset_1.iloc[j]['longitude']
-    speed_factor = gamma(vehicle_idx, t) 
-    base_speed = vehicles.iloc[vehicle_idx]['speed']
+    speed_factor = gamma(f, t) 
+    vehicle_row = vehicles.loc[vehicles['family'] == f].iloc[0]
+    base_speed = vehicle_row['speed']
     actual_speed = base_speed * speed_factor 
     manhattan_dist = abs(convert_x(phi_i, phi_j)) + abs(convert_y(lambda_i, lambda_j)) 
-    p_f = vehicles.iloc[vehicle_idx]['parking_time']
+    p_f = vehicle_row['parking_time']
     return manhattan_dist/actual_speed + p_f
 
 def delta_m(i,j): 
@@ -153,21 +155,25 @@ def heuristique(dataset, vehicles):
             #Choisir la meilleure route pour le véhicule actuel
             while route.transported_weight() < vehicle["max_capacity"] and unvisited_local:
                 for customer_id in unvisited_local:
-                    demand = dataset.loc[dataset['id'] == customer_id, 'order_weight'].iloc[0]
 
+                    demand = dataset.loc[dataset['id'] == customer_id, 'order_weight'].iloc[0]
                     if route.transported_weight() + demand > vehicle["max_capacity"]:
                         continue     
 
-                    f = route.family
-                    i = route.visited[-1]
-                    j = customer_id
+                    # Calcul des temps d'arrivée et de départ
+                    arrival = current_time + travel_time(route.family, route.visited[-1], customer_id, current_time)
 
-                    row_i = dataset.loc[dataset['id'] == i]
-                    row_j = dataset.loc[dataset['id'] == j]
+                    if arrival >  dataset.loc[dataset['id'] == customer_id, 'window_start'].iloc[0]:
+                        continue 
 
-                    t = current_time
+                    departure = arrival + dataset.loc[dataset['id'] == customer_id, 'service_time'].iloc[0]
 
-                    travel_cost = travel_time(f, row_i, row_j, t)
+                    if departure > dataset.loc[dataset['id'] == customer_id, 'window_end'].iloc[0]:
+                        continue
+
+                    route_locale = Route(route.family, route.n_orders + 1,route.visited + [customer_id], route.arrival_times + [arrival], route.departure_times + [departure])
+
+                    travel_cost = route_locale.total_cost()
 
                     if travel_cost < cout:
                         cout = travel_cost
@@ -177,7 +183,7 @@ def heuristique(dataset, vehicles):
                     # Mettre à jour la route avec le meilleur client trouvé
                     route.visited.append(best_customer)
                     route.n_orders += 1
-                    arrival = current_time + travel_cost
+                    arrival = current_time +  travel_time(route.family, route.visited[-2], best_customer, current_time)
                     route.arrival_times.append(arrival)
                     departure = arrival + dataset.loc[dataset['id'] == best_customer, 'service_time'].iloc[0]
                     route.departure_times.append(departure)
@@ -189,6 +195,7 @@ def heuristique(dataset, vehicles):
                     # Réinitialiser pour la prochaine itération
                     cout = np.inf
                     best_customer = None
+
                 else:
                     break  # Aucun client n'a été trouvé, sortir de la boucle
             
@@ -220,7 +227,7 @@ def heuristique(dataset, vehicles):
         route.visited.append(0)
         route.arrival_times.append(arrival)
         route.departure_times.append(arrival)  # assuming no service time at depot
-        
+
     return routes
 
 routes = heuristique(dataset, vehicles)
