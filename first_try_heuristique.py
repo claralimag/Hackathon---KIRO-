@@ -11,25 +11,42 @@ class Route:
         self.visited = visited
         self.arrival_times = arrival_times
         self.departure_times = departure_times
+        
     def c_rental(self) -> int:
-        #return int(vehicles.loc[vehicles['family'] == self.family, 'rental_cost'].iloc[0])
-        return vehicles.iloc[self.family-1]['rental_cost']
+        # Correction du bug d'indexation: Utilisation de loc au lieu de iloc
+        return int(vehicles.loc[vehicles['family'] == self.family, 'rental_cost'].iloc[0])
+        
     def c_fuel(self) -> float:
-        c_f = vehicles.iloc[self.family-1]['fuel_cost']
-        total = sum(delta_m(self.visited[i], self.visited[i+1]) for i in range(self.n_orders+1)) #otherwise
+        # Correction du bug d'indexation: Utilisation de loc au lieu de iloc
+        c_f = vehicles.loc[vehicles['family'] == self.family, 'fuel_cost'].iloc[0]
+        
+        # Correction de la logique de la boucle: len(self.visited) - 1 est le nombre de segments
+        total = sum(delta_m(self.visited[i], self.visited[i+1]) for i in range(len(self.visited) - 1))
         return float(c_f*total)
+        
     def c_radius(self) -> float:
-        c_r = vehicles.iloc[self.family-1]['radius_cost']
-        max_val = max(delta_e(self.visited[i], self.visited[j]) 
-              for i in range(self.n_orders+1) 
-              for j in range(i+1, self.n_orders+2))
-        print(max_val)
+        # Correction du bug d'indexation: Utilisation de loc au lieu de iloc
+        c_r = vehicles.loc[vehicles['family'] == self.family, 'radius_cost'].iloc[0]
+        
+        # Correction de la logique de la boucle: len(self.visited) est le nombre de points
+        max_val = 0.0
+        if len(self.visited) > 1:
+            max_val = max(delta_e(self.visited[i], self.visited[j]) 
+                          for i in range(len(self.visited)) 
+                          for j in range(i+1, len(self.visited)))
+        
+        # print(max_val) # Commenté pour éviter l'affichage
         return float((c_r/4)*(max_val**2))
+        
     def transported_weight(self) -> int :
-        return sum(dataset_1.iloc[self.visited[i]]['order_weight'] for i in range(1,self.n_orders+1))
+        # Correction de l'indexation: Utilisation de loc pour trouver le poids par ID
+        weight = 0
+        for customer_id in self.visited[1:]: # Commence à 1 pour exclure le dépôt (ID 0)
+            weight += dataset_1.loc[dataset_1['id'] == customer_id, 'order_weight'].iloc[0]
+        return weight
+        
     def total_cost(self) -> float:
         return self.c_rental()+self.c_fuel()+self.c_radius()
-    
 
 
 #defining route class
@@ -141,7 +158,7 @@ def heuristique(dataset, vehicles):
                 cost_route = route_cost
                 best_route = route
 
-            
+
         if best_route is not None:
             routes.append(best_route)
             # Remove visited customers from unvisited set
