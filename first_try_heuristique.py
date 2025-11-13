@@ -2,6 +2,7 @@ import numpy as np
 from numpy import pi, cos, sin
 import pandas as pd
 from dowload_data import dataset_1, vehicles
+from classe_route import Route
 
 def gamma(f,t):
     res = 0
@@ -112,6 +113,35 @@ class Route:
         for order in self.visited:
             weight += dataset.loc[dataset['id'] == order, 'order_weight'].iloc[0]
         return weight
+
+#On va essayer de simplifier l'heuristique 
+
+#Fonction pour une route donnée et un ensemble de clients non visités, 
+#trouver le prochain client à visiter qui minimise le coût total de la route tout en respectant les contraintes de capacité 
+#et de fenêtre temporelle.
+def next_client(route: Route, unvisited: list[int], vehicles: pd.DataFrame, dataset: pd.DataFrame):
+    best_cost = np.inf
+    best_customer = None
+    capacity = vehicles.loc[vehicles['family'] == route.family, 'max_capacity'].iloc[0]
+
+    for el in unvisited:
+        demand = dataset.loc[dataset['id'] == el, 'order_weight'].iloc[0]
+
+        arrival = route.departure_times[-1] + travel_time(route.family, route.visited[-1], el, route.departure_times[-1])
+        if arrival < dataset.loc[dataset['id'] == el, 'window_start'].iloc[0]:
+            departure = arrival + dataset.loc[dataset['id'] == el, 'service_time'].iloc[0]
+            if departure <= dataset.loc[dataset['id'] == el, 'window_end'].iloc[0]:
+                if demand + route.transported_weight() <= capacity:
+                    #Créer une route temporaire pour évaluer le coût
+                    temp_route = Route(route.family, route.n_orders + 1, route.visited + [el], route.arrival_times + [arrival], route.departure_times + [departure])
+                    cost = temp_route.total_cost()
+
+                    if cost < best_cost:
+                        best_cost = cost
+                        best_customer = el
+
+    return best_customer
+
 
 
 def heuristique(dataset, vehicles):
