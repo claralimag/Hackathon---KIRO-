@@ -79,6 +79,8 @@ M1 = delta_M(instance1)
 E1 = delta_E(instance1)
 
 ############################################################
+### Individual routes functions ###
+############################################################
 
 def is_feasible(route, f, instance):
     """
@@ -129,5 +131,131 @@ def is_feasible(route, f, instance):
     
     return True 
 
+
+def route_cost(route, f, instance): 
+    """
+    computes objective function for a given route and car family 
+    """
+    vehicle_idx = f-1
+    distancesM = delta_M(instance)
+    distancesE = delta_E(instance)
+
+    # rental cost 
+    c_rental = vehicles.iloc[vehicle_idx]['rental_cost']
+
+    # Fuel cost 
+    fuel_cost_per_meter = vehicles.iloc[vehicle_idx]['fuel_cost']
+    c_fuel = 0 
+    for k in range (len(route)-1): 
+        c_fuel += fuel_cost_per_meter*distancesM[route[k], route[k+1]]
     
+    # eucledian radius penalty 
+    radius_cost = vehicles.iloc[vehicle_idx]['radius_cost']
+    max_euclidian_distance = 0
+    delivery_points = [i for i in route if i != 0]
+    for i in range(len(delivery_points)):
+        for j in range(i + 1, len(delivery_points)):
+            a = delivery_points[i]
+            b = delivery_points[j]
+            max_euclidian_distance = max(max_euclidian_distance, distancesE[a, b])
+    c_radius = radius_cost*(0.5*max_euclidian_distance)**2
+
+    return c_rental + c_fuel + c_radius 
+
+def get_deliveries(instance):
+    return list(range(1, len(instance)))
+
+############################################################
+### Global set of routes functions (solution) ###
+############################################################
+
+def solution_cost(R, instance):  
+    """
+    Computes total cost of a set of routes R
+    Typical format for R : 
+
+    R = {
+        0: {"family": 1, "route": [0, 12, 5, 19, 0]},
+        1: {"family": 2, "route": [0, 8, 21, 7, 0]},
+    }
+    """
+    tot_cost = 0
+    for r in R: 
+        f = R[r]['family']
+        route = R[r]['route']
+        tot_cost += route_cost(route, f, instance)
+    return tot_cost 
+
+def is_solution_feasible(R, instance): 
+    visited = set() # set of all delivery points visited 
+    # check each individual route 
+    for r in R : 
+        # route feasible  
+        f = R[r]['family']
+        route = R[r]['route']
+        if is_feasible(route, f, instance) == False : 
+            return False, f"route {r} is infeasible"
     
+        # unique service for each drop point 
+        for delivery_point in route[1:-1]
+            if delivery_point in visited:
+                return False, f"delivery {delivery_point} visited more than once"
+            visited.add(delivery_point)
+
+    # All delivery points must be visited
+    all_deliveries = set(instance[instance['id'] != 0].index)
+    missing = all_deliveries - visited
+    if len(missing) > 0:
+        return False, f"{missing} Missing orders"
+    return True 
+
+############################################################
+### First simple Heuristic ###
+############################################################
+
+def next_feasible_node(previous_node, unvisited, f, current_route, instance):
+    """
+    Looks for nearest delivery point (feasible) to add to current route 
+    """
+    M = delta_M(instance)
+
+    distances = []
+    for node in unvisited:
+        dist = M[previous_node][node] 
+        distances.append((dist, node))
+    distances.sort()
+    
+    # try each node from closest to farest 
+    for dist, next_node in distances: 
+        new_route = current_route[:-1] + [next_node, 0]
+        if is_feasible(new_route, f, instance): 
+            return next_node 
+        
+    return None 
+
+
+def build_solution(instance):
+    """
+    builds first simple solution 
+    """
+    R = {}
+    r = 0
+    f = 1 
+    unvisited = set(get_deliveries(instance))
+
+    while unvisited : 
+        R[r] = {'family': 1, 'route': [0,0]} # initialize empty route
+        current_route = R[r]['route']
+
+        while True : # while its possible to add new nodes to the route : 
+            prev_delivery = current_route[-2]
+            next_delivery = next_feasible_node(prev_delivery, unvisited, f, current_route, instance)
+            
+            if next_delivery is None : 
+                break 
+
+            current_route.insert(-1, next_delivery) # add just before depot the delivery node 
+            unvisited.remove(next_delivery)
+        r += 1
+        
+    return R
