@@ -2,77 +2,7 @@ import numpy as np
 from numpy import pi, cos, sin
 import pandas as pd
 from dowload_data import dataset_1, vehicles
-from classe_route import Route
-
-def gamma(f,t):
-    res = 0
-    w = (2*pi)/86400
-    vehicle_row = vehicles.loc[vehicles['family'] == f].iloc[0]
-    for n in range (0,4): 
-        alpha_f_n = vehicle_row['fourier_cos_'+ str(n)]
-        beta_f_n = vehicle_row['fourier_sin_'+ str(n)]
-        res += alpha_f_n*cos(n*w*t) + beta_f_n*sin(n*w*t)
-    return res
-
-
-def convert_x(phi_i, phi_j): 
-    ro = 6.371e6
-    return ro*((2*pi)/360)*(phi_j-phi_i)
-
-
-def convert_y(lambda_i, lambda_j): 
-    ro = 6.371e6
-    phi_0 = 48.764246
-    return ro*(cos(((2*pi)/360)*phi_0))*((2*pi/360)*(lambda_j-lambda_i))
-
-
-def travel_time(f,i,j,t): 
-    # vehicle_idx = f - 1  
-    phi_i, lambda_i = dataset_1.iloc[i]['latitude'], dataset_1.iloc[i]['longitude']
-    phi_j, lambda_j = dataset_1.iloc[j]['latitude'], dataset_1.iloc[j]['longitude']
-    speed_factor = gamma(f, t) 
-    vehicle_row = vehicles.loc[vehicles['family'] == f].iloc[0]
-    base_speed = vehicle_row['speed']
-    actual_speed = base_speed * speed_factor 
-    manhattan_dist = abs(convert_x(phi_i, phi_j)) + abs(convert_y(lambda_i, lambda_j)) 
-    p_f = vehicle_row['parking_time']
-    return manhattan_dist/actual_speed + p_f
-
-def delta_m(i,j): 
-    phi_i, lambda_i = dataset_1.iloc[i]['latitude'], dataset_1.iloc[i]['longitude']
-    phi_j, lambda_j = dataset_1.iloc[j]['latitude'], dataset_1.iloc[j]['longitude']
-    return abs(convert_x(phi_i, phi_j)) + abs(convert_y(lambda_i, lambda_j)) 
-
-def delta_e(i,j): 
-    phi_i, lambda_i = dataset_1.iloc[i]['latitude'], dataset_1.iloc[i]['longitude']
-    phi_j, lambda_j = dataset_1.iloc[j]['latitude'], dataset_1.iloc[j]['longitude']
-    return np.sqrt(abs(convert_x(phi_i, phi_j))**2 + abs(convert_y(lambda_i, lambda_j))**2)
-
-def delta_M(instance): 
-    """
-    outputs matrice of manhattan distances M[i][j]
-    """
-    n_locations = len(instance)
-    M = np.zeros((n_locations, n_locations))
-    for i in range(n_locations): 
-        for j in range(n_locations): 
-            M[i,j] = delta_m(i,j)
-    return M
-
-
-def delta_E(instance): 
-    """
-    outputs matrice of euclidian distances M[i][j]
-    """
-    n_locations = len(instance)
-    E = np.zeros((n_locations, n_locations))
-    for i in range(n_locations): 
-        for j in range(n_locations): 
-            E[i,j] = delta_e(i,j)
-    return E
-
-#defining route class
-dataset = dataset_1
+from kiro import gamma, convert_x, convert_y, travel_time, delta_m, delta_e, delta_M, delta_E, is_feasible
 
 class Route:
     def __init__(self,family: int, n_orders:int, visited : list[int], arrival_times : list[int], departure_times: list[int]):
@@ -81,56 +11,58 @@ class Route:
         self.visited = visited
         self.arrival_times = arrival_times
         self.departure_times = departure_times
-
     def c_rental(self) -> int:
-        return vehicles.loc[vehicles['family'] == self.family, 'rental_cost'].iloc[0]
-    
+        #return int(vehicles.loc[vehicles['family'] == self.family, 'rental_cost'].iloc[0])
+        return vehicles.iloc[self.family-1]['rental_cost']
     def c_fuel(self) -> float:
-        c_f = vehicles.loc[vehicles['family'] == self.family, 'fuel_cost'].iloc[0]
-        total = 0.0
-        for i in range(len(self.visited) - 1):
-            total += delta_m(self.visited[i], self.visited[i+1])
-        return c_f * total
-    
+        c_f = vehicles.iloc[self.family-1]['fuel_cost']
+        total = sum(delta_m(self.visited[i], self.visited[i+1]) for i in range(self.n_orders+1)) #otherwise
+        return float(c_f*total)
     def c_radius(self) -> float:
-        c_r = vehicles.loc[vehicles['family'] == self.family, 'radius_cost'].iloc[0]
-        # On prend tous les points visités
-        if len(self.visited) <= 1:
-            return 0.0
-        max_val = 0.0
-        for i in range(len(self.visited)):
-            for j in range(i + 1, len(self.visited)):
-                d = delta_e(self.visited[i], self.visited[j])
-                if d > max_val:
-                    max_val = d
-        return (c_r / 4.0) * (max_val ** 2)
+        c_r = vehicles.iloc[self.family-1]['radius_cost']
+        max_val = max(delta_e(self.visited[i], self.visited[j]) 
+              for i in range(self.n_orders+1) 
+              for j in range(i+1, self.n_orders+2))
+        print(max_val)
+        return float((c_r/4)*(max_val**2))
+    def transported_weight(self) -> int :
+        return sum(dataset_1.iloc[self.visited[i]]['order_weight'] for i in range(1,self.n_orders+1))
+    def total_cost(self) -> float:
+        return self.c_rental()+self.c_fuel()+self.c_radius()
     
-    def total_cost(self) -> int:
-        return self.c_rental() + self.c_fuel() + self.c_radius()
-    
-    def transported_weight(self) -> float:
-        weight = 0.0
-        for order in self.visited:
-            weight += dataset.loc[dataset['id'] == order, 'order_weight'].iloc[0]
-        return weight
+
+
+#defining route class
+dataset = dataset_1
 
 #On va essayer de simplifier l'heuristique 
 
 #Fonction pour une route donnée et un ensemble de clients non visités, 
 #trouver le prochain client à visiter qui minimise le coût total de la route tout en respectant les contraintes de capacité 
 #et de fenêtre temporelle.
+
 def next_client(route: Route, unvisited: list[int], vehicles: pd.DataFrame, dataset: pd.DataFrame):
     best_cost = np.inf
     best_customer = None
     capacity = vehicles.loc[vehicles['family'] == route.family, 'max_capacity'].iloc[0]
 
     for el in unvisited:
-        demand = dataset.loc[dataset['id'] == el, 'order_weight'].iloc[0]
 
+         #Chargement des données du client pour l'optimisation
+        customer_data = dataset.loc[dataset['id'] == el].iloc[0]
+        window_start = customer_data['window_start']
+        
+        #Calcul des temps d'arrivée et de départ
         arrival = route.departure_times[-1] + travel_time(route.family, route.visited[-1], el, route.departure_times[-1])
-        if arrival < dataset.loc[dataset['id'] == el, 'window_start'].iloc[0]:
-            departure = arrival + dataset.loc[dataset['id'] == el, 'service_time'].iloc[0]
-            if departure <= dataset.loc[dataset['id'] == el, 'window_end'].iloc[0]:
+
+        if arrival >= window_start:  #no waiting time
+            service_time = customer_data['service_time']
+            window_end = customer_data['window_end']
+            departure = arrival + service_time
+
+            if departure <= window_end:
+                demand = customer_data['order_weight']
+
                 if demand + route.transported_weight() <= capacity:
                     #Créer une route temporaire pour évaluer le coût
                     temp_route = Route(route.family, route.n_orders + 1, route.visited + [el], route.arrival_times + [arrival], route.departure_times + [departure])
@@ -142,7 +74,26 @@ def next_client(route: Route, unvisited: list[int], vehicles: pd.DataFrame, data
 
     return best_customer
 
+def best_client_sequence(route: Route, unvisited: list[int], vehicles: pd.DataFrame, dataset: pd.DataFrame):
+    capacity = vehicles.loc[vehicles['family'] == route.family, 'max_capacity'].iloc[0]
+    routes_weight = route.transported_weight()
 
+    while unvisited and routes_weight < capacity:
+        next_client_id = next_client(route, unvisited, vehicles, dataset)
+
+        if next_client_id is None:
+            break  # No feasible next client found
+
+        unvisited.remove(next_client_id)
+        routes_weight += dataset.loc[dataset['id'] == next_client_id, 'order_weight'].iloc[0]
+        arrival = route.departure_times[-1] + travel_time(route.family, route.visited[-1], next_client_id, route.departure_times[-1])
+        departure = arrival + dataset.loc[dataset['id'] == next_client_id, 'service_time'].iloc[0]
+        route.visited.append(next_client_id)
+        route.n_orders += 1
+        route.arrival_times.append(arrival)
+        route.departure_times.append(departure)
+
+    return route
 
 def heuristique(dataset, vehicles):
     # Set of unvisited customers
@@ -183,58 +134,13 @@ def heuristique(dataset, vehicles):
             best_customer = None
 
             #Choisir la meilleure route pour le véhicule actuel
-            while route.transported_weight() < vehicle["max_capacity"] and unvisited_local:
-                for customer_id in unvisited_local:
-
-                    demand = dataset.loc[dataset['id'] == customer_id, 'order_weight'].iloc[0]
-                    if route.transported_weight() + demand > vehicle["max_capacity"]:
-                        continue     
-
-                    # Calcul des temps d'arrivée et de départ
-                    arrival = current_time + travel_time(route.family, route.visited[-1], customer_id, current_time)
-
-                    if arrival >  dataset.loc[dataset['id'] == customer_id, 'window_start'].iloc[0]:
-                        continue 
-
-                    departure = arrival + dataset.loc[dataset['id'] == customer_id, 'service_time'].iloc[0]
-
-                    if departure > dataset.loc[dataset['id'] == customer_id, 'window_end'].iloc[0]:
-                        continue
-
-                    route_locale = Route(route.family, route.n_orders + 1,route.visited + [customer_id], route.arrival_times + [arrival], route.departure_times + [departure])
-
-                    travel_cost = route_locale.total_cost()
-
-                    if travel_cost < cout:
-                        cout = travel_cost
-                        best_customer = customer_id
-                    
-                if best_customer is not None:
-                    # Mettre à jour la route avec le meilleur client trouvé
-                    route.visited.append(best_customer)
-                    route.n_orders += 1
-                    arrival = current_time +  travel_time(route.family, route.visited[-2], best_customer, current_time)
-                    route.arrival_times.append(arrival)
-                    departure = arrival + dataset.loc[dataset['id'] == best_customer, 'service_time'].iloc[0]
-                    route.departure_times.append(departure)
-
-                    current_time = departure
-                    capacity_remaining -= dataset.loc[dataset['id'] == best_customer, 'order_weight'].iloc[0]
-                    unvisited_local.remove(best_customer)
-
-                    # Réinitialiser pour la prochaine itération
-                    cout = np.inf
-                    best_customer = None
-
-                else:
-                    break  # Aucun client n'a été trouvé, sortir de la boucle
+            route = best_client_sequence(route, unvisited_local, vehicles, dataset)
             
-            # choose best route found for this vehicle
             route_cost = route.total_cost()
             if route_cost < cost_route:
                 cost_route = route_cost
                 best_route = route
-            best_vehicle = vehicle["id"]
+
             
         if best_route is not None:
             routes.append(best_route)

@@ -97,7 +97,7 @@ def is_feasible(route, f, instance):
     total_weight = 0
     for i in range(n): 
         total_weight += instance.iloc[i]['order_weight']
-    if total_weight > vehicles.iloc[vehicle_idx]['max_capacity']
+    if total_weight > vehicles.iloc[vehicle_idx]['max_capacity']:
         return False 
     
     #### Time constraints ####
