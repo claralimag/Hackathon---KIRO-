@@ -1,12 +1,41 @@
 import numpy as np
 from dowload_data import dataset_1, vehicles
-from class_route import Route
+from kiro import delta_e, delta_m, travel_time
 
-def travel_time(f,i,j,t):
-    pass 
+#defining route class
+dataset = dataset_1
 
-def gamma(f,t):
-    pass 
+class Route:
+    def __init__(self,family: int, n_orders:int, visited : list[int], arrival_times : list[int], departure_times: list[int]):
+        self.family = family
+        self.n_orders = n_orders
+        self.visited = visited
+        self.arrival_times = arrival_times
+        self.departure_times = departure_times
+
+    def c_rental(self) -> int:
+        return vehicles.loc[vehicles['family'] == self.family, 'rental_cost'].iloc[0]
+    
+    def c_fuel(self) -> int:
+        c_f = vehicles.loc[vehicles['family'] == self.family, 'fuel_cost'].iloc[0]
+        total = np.sum(delta_m(self.visited[:-1], self.visited[1:])) #if delta_m supports arrays
+        return c_f*total
+    
+    def c_radius(self) -> int:
+        c_r = vehicles.loc[vehicles['family'] == self.family, 'radius_cost'].iloc[0]
+        max_val = max(delta_e(self.visited[i], self.visited[j]) 
+              for i in range(self.n_orders) 
+              for j in range(i+1, self.n_orders))
+        return (c_r/4)*max_val**2
+    
+    def total_cost(self) -> int:
+        return self.c_rental() + self.c_fuel() + self.c_radius()
+    
+    def transported_weight(self) -> int :
+        for order in self.visited:
+            weight += dataset.loc[dataset['id'] == order, 'order_weight'].iloc[0]
+        return weight
+
 
 def heuristique(dataset, vehicles):
     # Set of unvisited customers
@@ -42,10 +71,10 @@ def heuristique(dataset, vehicles):
             best_customer = None
 
             #Choisir la meilleure route pour le véhicule actuel
-            while transported_weight.route < vehicle["capacity"] and unvisited:
+            while route.transported_weight() < vehicle["capacity"] and unvisited:
                 for customer_id in unvisited:
-                    f = route.vehicle_id
-                    i = route.visites_routes[-1]
+                    f = route.family
+                    i = route.visited[-1]
                     j = customer_id
                     t = current_time
 
@@ -90,6 +119,9 @@ def heuristique(dataset, vehicles):
             break  # No feasible route found, exit the loop
 
     return routes
+
+routes = heuristique(dataset, vehicles)
+
 
 
 
