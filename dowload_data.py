@@ -24,5 +24,3 @@ dataset_1['window_end'] = np.where(dataset_1['id'] == 0, 0, dataset_1['window_en
 print(dataset_1.info())
 print(dataset_1.head())
 
-
-
