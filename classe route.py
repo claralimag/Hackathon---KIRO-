@@ -1,0 +1,30 @@
+#defining route class
+import numpy as np
+from kiro import gamma, convert_x, convert_y, travel_time, delta_m, delta_e, delta_M, delta_E, is_feasible
+from dowload_data import dataset_1, vehicles
+
+class Route:
+    def __init__(self,family: int, n_orders:int, visited : list[int], arrival_times : list[int], departure_times: list[int]):
+        self.family = family
+        self.n_orders = n_orders
+        self.visited = visited
+        self.arrival_times = arrival_times
+        self.departure_times = departure_times
+    def c_rental(self) -> int:
+        #return int(vehicles.loc[vehicles['family'] == self.family, 'rental_cost'].iloc[0])
+        return vehicles.iloc[self.family-1]['rental_cost']
+    def c_fuel(self) -> float:
+        c_f = vehicles.iloc[self.family-1]['fuel_cost']
+        total = sum(delta_m(self.visited[i], self.visited[i+1]) for i in range(self.n_orders+1)) #otherwise
+        return float(c_f*total)
+    def c_radius(self) -> float:
+        c_r = vehicles.iloc[self.family-1]['radius_cost']
+        max_val = max(delta_e(self.visited[i], self.visited[j]) 
+              for i in range(self.n_orders+1) 
+              for j in range(i+1, self.n_orders+2))
+        print(max_val)
+        return float((c_r/4)*(max_val**2))
+    def transported_weight(self) -> int :
+        return sum(dataset_1.iloc[self.visited[i]]['order_weight'] for i in range(1,self.n_orders+1))
+    def total_cost(self) -> float:
+        return self.c_rental()+self.c_fuel()+self.c_radius()
