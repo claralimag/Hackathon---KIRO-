@@ -46,17 +46,17 @@ def travel_time(f,i,j,t):
     return manhattan_dist/actual_speed + p_f
 
 
-def delta_m(i,j, instance): 
+def delta_m(i,j, instance= instance1): 
     phi_i, lambda_i = instance.iloc[i]['latitude'], instance.iloc[i]['longitude']
     phi_j, lambda_j = instance.iloc[j]['latitude'], instance.iloc[j]['longitude']
     return abs(convert_x(phi_i, phi_j)) + abs(convert_y(lambda_i, lambda_j)) 
 
-def delta_e(i,j, instance): 
+def delta_e(i,j, instance= instance1): 
     phi_i, lambda_i = instance.iloc[i]['latitude'], instance.iloc[i]['longitude']
     phi_j, lambda_j = instance.iloc[j]['latitude'], instance.iloc[j]['longitude']
     return np.sqrt(abs(convert_x(phi_i, phi_j))**2 + abs(convert_y(lambda_i, lambda_j))**2)
 
-def delta_M(instance): 
+def delta_M(instance = instance1): 
     """
     outputs matrice of manhattan distances M[i][j]
     """
@@ -136,13 +136,14 @@ def next_client(route: Route, unvisited: list[int], vehicles: pd.DataFrame, data
          #Chargement des données du client pour l'optimisation
         customer_data = dataset.loc[dataset['id'] == el].iloc[0]
         window_start = customer_data['window_start']
-        
+        service_time = customer_data['delivery_duration']
+        window_end = customer_data['window_end']
+
         #Calcul des temps d'arrivée et de départ
         arrival = route.departure_times[-1] + travel_time(route.family, route.visited[-1], el, route.departure_times[-1])
 
-        if arrival >= window_start:  #no waiting time
-            service_time = customer_data['service_time']
-            window_end = customer_data['window_end']
+        if arrival < window_end:  #no waiting time
+            arrival = max(window_start, arrival)
             departure = arrival + service_time
 
             if departure <= window_end:
@@ -172,7 +173,8 @@ def best_client_sequence(route: Route, unvisited: list[int], vehicles: pd.DataFr
         unvisited.remove(next_client_id)
         routes_weight += dataset.loc[dataset['id'] == next_client_id, 'order_weight'].iloc[0]
         arrival = route.departure_times[-1] + travel_time(route.family, route.visited[-1], next_client_id, route.departure_times[-1])
-        departure = arrival + dataset.loc[dataset['id'] == next_client_id, 'service_time'].iloc[0]
+        arrival = max(arrival, dataset.loc[dataset['id'] == next_client_id, 'window_start'].iloc[0])
+        departure = arrival + dataset.loc[dataset['id'] == next_client_id, 'delivery_duration'].iloc[0]
         route.visited.append(next_client_id)
         route.n_orders += 1
         route.arrival_times.append(arrival)
