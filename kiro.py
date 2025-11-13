@@ -1,12 +1,9 @@
 import pandas as pd 
 from math import *
 import numpy as np 
+from dowload_data import dataset_1, vehicles
 
-vehicles_path = '/Users/antoinechosson/Desktop/KIRO2025/instances/vehicles.csv'
-instance1_path = '/Users/antoinechosson/Desktop/KIRO2025/instances/instance_01.csv'
-
-vehicles = pd.read_csv(vehicles_path)
-instance1 = pd.read_csv(instance1_path)
+instance1 = dataset_1
 
 ############################################################
 
@@ -197,7 +194,7 @@ def is_solution_feasible(R, instance):
             return False, f"route {r} is infeasible"
     
         # unique service for each drop point 
-        for delivery_point in route[1:-1]
+        for delivery_point in route[1:-1]:
             if delivery_point in visited:
                 return False, f"delivery {delivery_point} visited more than once"
             visited.add(delivery_point)
