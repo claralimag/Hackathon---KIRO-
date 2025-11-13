@@ -22,7 +22,7 @@ def heuristique(dataset, vehicles):
     
     #On prend le vehicule i s'il minimise le cout à l'instant t
 
-    cout = np.inf
+    cost_route = np.inf
     best_route = None
     best_vehicle = None
 
@@ -38,6 +38,9 @@ def heuristique(dataset, vehicles):
             capacity_remaining = vehicle["capacity"]
             current_time = 0
 
+            cout = np.inf
+            best_customer = None
+
             #Choisir la meilleure route pour le véhicule actuel
             while transported_weight.route < vehicle["capacity"] and unvisited:
                 for customer_id in unvisited:
@@ -50,9 +53,43 @@ def heuristique(dataset, vehicles):
 
                     if travel_cost < cout:
                         cout = travel_cost
-                        best_route = route
-                        best_vehicle = vehicle
                         best_customer = customer_id
+                    
+                if best_customer is not None:
+                    # Mettre à jour la route avec le meilleur client trouvé
+                    route.visites_routes.append(best_customer)
+                    route.n_orders += 1
+                    arrival = current_time + travel_time(route.vehicle_id, route.visites_routes[-2], best_customer, current_time)
+                    route.arrival_times.append(arrival)
+                    departure = arrival + dataset.loc[dataset['id'] == best_customer, 'service_time'].iloc[0]
+                    route.departure_times.append(departure)
+
+                    current_time = departure
+                    capacity_remaining -= dataset.loc[dataset['id'] == best_customer, 'demand'].iloc[0]
+                    unvisited.remove(best_customer)
+
+                    # Réinitialiser pour la prochaine itération
+                    cout = np.inf
+                    best_customer = None
+                else:
+                    break  # Aucun client n'a été trouvé, sortir de la boucle
+            
+            # choose best route found for this vehicle
+            if route.total_cost < cost_route:
+                cost_route = route.total_cost
+                best_route = route
+                best_vehicle = vehicle["id"]
+            
+        if best_route is not None:
+            routes.append(best_route)
+            # Remove visited customers from unvisited set
+            for customer in best_route.visites_routes[1:]:  # Exclude depot
+                if customer in unvisited:
+                    unvisited.remove(customer)
+        else:
+            break  # No feasible route found, exit the loop
+
+    return routes
 
 
 
