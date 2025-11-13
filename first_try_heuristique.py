@@ -142,26 +142,32 @@ def heuristique(dataset, vehicles):
             arrival_time = [] 
             departure_time = [0]
 
-            route = Route(vehicle["id"], 0, visites_routes, arrival_time, departure_time)
+            route = Route(vehicle["family"], 0, visites_routes, arrival_time, departure_time)
 
-            capacity_remaining = vehicle["capacity"]
+            capacity_remaining = vehicle["max_capacity"]
             current_time = 0
 
             cout = np.inf
             best_customer = None
 
             #Choisir la meilleure route pour le véhicule actuel
-            while route.transported_weight() < vehicle["capacity"] and unvisited_local:
-                for customer_id in unvisited:
+            while route.transported_weight() < vehicle["max_capacity"] and unvisited_local:
+                for customer_id in unvisited_local:
                     demand = dataset.loc[dataset['id'] == customer_id, 'order_weight'].iloc[0]
-                    if route.transported_weight() + demand > vehicle["capacity"]:
+
+                    if route.transported_weight() + demand > vehicle["max_capacity"]:
                         continue     
+
                     f = route.family
                     i = route.visited[-1]
                     j = customer_id
+
+                    row_i = dataset.loc[dataset['id'] == i]
+                    row_j = dataset.loc[dataset['id'] == j]
+
                     t = current_time
 
-                    travel_cost = travel_time(f, i, j, t)
+                    travel_cost = travel_time(f, row_i, row_j, t)
 
                     if travel_cost < cout:
                         cout = travel_cost
@@ -171,7 +177,7 @@ def heuristique(dataset, vehicles):
                     # Mettre à jour la route avec le meilleur client trouvé
                     route.visited.append(best_customer)
                     route.n_orders += 1
-                    arrival = current_time + travel_time(route.family, route.visited[-2], best_customer, current_time)
+                    arrival = current_time + travel_cost
                     route.arrival_times.append(arrival)
                     departure = arrival + dataset.loc[dataset['id'] == best_customer, 'service_time'].iloc[0]
                     route.departure_times.append(departure)
@@ -187,21 +193,34 @@ def heuristique(dataset, vehicles):
                     break  # Aucun client n'a été trouvé, sortir de la boucle
             
             # choose best route found for this vehicle
-                route_cost = route.total_cost()
-                if route_cost < cost_route:
-                    cost_route = route_cost
-                    best_route = route
-                best_vehicle = vehicle["id"]
+            route_cost = route.total_cost()
+            if route_cost < cost_route:
+                cost_route = route_cost
+                best_route = route
+            best_vehicle = vehicle["id"]
             
         if best_route is not None:
             routes.append(best_route)
             # Remove visited customers from unvisited set
-            for customer in best_route.visites_routes[1:]:  # Exclude depot
-                if customer in unvisited:
+            for customer in best_route.visited[1:]:              
+                if customer in unvisited:   
                     unvisited.remove(customer)
         else:
             break  # No feasible route found, exit the loop
 
+    #return to the depot for each route
+    for route in routes:
+        last_customer = route.visited[-1]
+        f = route.family
+        i = last_customer
+        j = 0  # depot
+        t = route.departure_times[-1]
+        travel_cost = travel_time(f, i, j, t)
+        arrival = t + travel_cost
+        route.visited.append(0)
+        route.arrival_times.append(arrival)
+        route.departure_times.append(arrival)  # assuming no service time at depot
+        
     return routes
 
 routes = heuristique(dataset, vehicles)
