@@ -1,7 +1,73 @@
 #defining route class
 import numpy as np
-from kiro import gamma, convert_x, convert_y, travel_time, delta_m, delta_e, delta_M, delta_E, is_feasible
 from dowload_data import dataset_1, vehicles
+
+
+def gamma(f,t):
+    res = 0
+    w = (2*pi)/86400
+    for n in range (0,4): 
+        alpha_f_n = vehicles.iloc[f]['fourier_cos_'+ str(n)]
+        beta_f_n = vehicles.iloc[f]['fourier_sin_'+ str(n)]
+        res += alpha_f_n*cos(n*w*t) + beta_f_n*sin(n*w*t)
+    return res
+
+
+def convert_x(phi_i, phi_j): 
+    ro = 6.371e6
+    return ro*((2*pi)/360)*(phi_j-phi_i)
+
+
+def convert_y(lambda_i, lambda_j): 
+    ro = 6.371e6
+    phi_0 = 48.764246
+    return ro*(cos(((2*pi)/360)*phi_0))*((2*pi/360)*(lambda_j-lambda_i))
+
+
+def travel_time(f,i,j,t, instance): 
+    vehicle_idx = f - 1  
+    phi_i, lambda_i = instance.iloc[i]['latitude'], instance.iloc[i]['longitude']
+    phi_j, lambda_j = instance.iloc[j]['latitude'], instance.iloc[j]['longitude']
+    speed_factor = gamma(vehicle_idx, t) 
+    base_speed = vehicles.iloc[vehicle_idx]['speed']
+    actual_speed = base_speed * speed_factor 
+    manhattan_dist = abs(convert_x(phi_i, phi_j)) + abs(convert_y(lambda_i, lambda_j)) 
+    p_f = vehicles.iloc[vehicle_idx]['parking_time']
+    return manhattan_dist/actual_speed + p_f
+
+def delta_m(i,j, instance): 
+    phi_i, lambda_i = instance.iloc[i]['latitude'], instance.iloc[i]['longitude']
+    phi_j, lambda_j = instance.iloc[j]['latitude'], instance.iloc[j]['longitude']
+    return abs(convert_x(phi_i, phi_j)) + abs(convert_y(lambda_i, lambda_j)) 
+
+def delta_e(i,j, instance): 
+    phi_i, lambda_i = instance.iloc[i]['latitude'], instance.iloc[i]['longitude']
+    phi_j, lambda_j = instance.iloc[j]['latitude'], instance.iloc[j]['longitude']
+    return sqrt(abs(convert_x(phi_i, phi_j))**2 + abs(convert_y(lambda_i, lambda_j))**2)
+
+def delta_M(instance): 
+    """
+    outputs matrice of manhattan distances M[i][j]
+    """
+    n_locations = len(instance)
+    M = np.zeros((n_locations, n_locations))
+    for i in range(n_locations): 
+        for j in range(n_locations): 
+            M[i,j] = delta_m(i,j, instance)
+    return M
+
+
+def delta_E(instance): 
+    """
+    outputs matrice of euclidian distances M[i][j]
+    """
+    n_locations = len(instance)
+    E = np.zeros((n_locations, n_locations))
+    for i in range(n_locations): 
+        for j in range(n_locations): 
+            E[i,j] = delta_e(i,j, instance)
+    return E
+
 
 class Route:
     def __init__(self,family: int, n_orders:int, visited : list[int], arrival_times : list[int], departure_times: list[int]):

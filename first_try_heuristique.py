@@ -2,7 +2,73 @@ import numpy as np
 from numpy import pi, cos, sin
 import pandas as pd
 from dowload_data import dataset_1, vehicles
-from kiro import gamma, convert_x, convert_y, travel_time, delta_m, delta_e, delta_M, delta_E, is_feasible
+
+instance1 = dataset_1
+
+def gamma(f,t):
+    res = 0
+    w = (2*pi)/86400
+    for n in range (0,4): 
+        alpha_f_n = vehicles.iloc[f]['fourier_cos_'+ str(n)]
+        beta_f_n = vehicles.iloc[f]['fourier_sin_'+ str(n)]
+        res += alpha_f_n*cos(n*w*t) + beta_f_n*sin(n*w*t)
+    return res
+
+
+def convert_x(phi_i, phi_j): 
+    ro = 6.371e6
+    return ro*((2*pi)/360)*(phi_j-phi_i)
+
+
+def convert_y(lambda_i, lambda_j): 
+    ro = 6.371e6
+    phi_0 = 48.764246
+    return ro*(cos(((2*pi)/360)*phi_0))*((2*pi/360)*(lambda_j-lambda_i))
+
+
+def travel_time(f,i,j,t, instance = instance1): 
+    vehicle_idx = f - 1  
+    phi_i, lambda_i = instance.iloc[i]['latitude'], instance.iloc[i]['longitude']
+    phi_j, lambda_j = instance.iloc[j]['latitude'], instance.iloc[j]['longitude']
+    speed_factor = gamma(vehicle_idx, t) 
+    base_speed = vehicles.iloc[vehicle_idx]['speed']
+    actual_speed = base_speed * speed_factor 
+    manhattan_dist = abs(convert_x(phi_i, phi_j)) + abs(convert_y(lambda_i, lambda_j)) 
+    p_f = vehicles.iloc[vehicle_idx]['parking_time']
+    return manhattan_dist/actual_speed + p_f
+
+def delta_m(i,j, instance): 
+    phi_i, lambda_i = instance.iloc[i]['latitude'], instance.iloc[i]['longitude']
+    phi_j, lambda_j = instance.iloc[j]['latitude'], instance.iloc[j]['longitude']
+    return abs(convert_x(phi_i, phi_j)) + abs(convert_y(lambda_i, lambda_j)) 
+
+def delta_e(i,j, instance): 
+    phi_i, lambda_i = instance.iloc[i]['latitude'], instance.iloc[i]['longitude']
+    phi_j, lambda_j = instance.iloc[j]['latitude'], instance.iloc[j]['longitude']
+    return np.sqrt(abs(convert_x(phi_i, phi_j))**2 + abs(convert_y(lambda_i, lambda_j))**2)
+
+def delta_M(instance): 
+    """
+    outputs matrice of manhattan distances M[i][j]
+    """
+    n_locations = len(instance)
+    M = np.zeros((n_locations, n_locations))
+    for i in range(n_locations): 
+        for j in range(n_locations): 
+            M[i,j] = delta_m(i,j, instance)
+    return M
+
+
+def delta_E(instance): 
+    """
+    outputs matrice of euclidian distances M[i][j]
+    """
+    n_locations = len(instance)
+    E = np.zeros((n_locations, n_locations))
+    for i in range(n_locations): 
+        for j in range(n_locations): 
+            E[i,j] = delta_e(i,j, instance)
+    return E
 
 class Route:
     def __init__(self,family: int, n_orders:int, visited : list[int], arrival_times : list[int], departure_times: list[int]):
@@ -13,33 +79,26 @@ class Route:
         self.departure_times = departure_times
         
     def c_rental(self) -> int:
-        # Correction du bug d'indexation: Utilisation de loc au lieu de iloc
         return int(vehicles.loc[vehicles['family'] == self.family, 'rental_cost'].iloc[0])
         
     def c_fuel(self) -> float:
-        # Correction du bug d'indexation: Utilisation de loc au lieu de iloc
         c_f = vehicles.loc[vehicles['family'] == self.family, 'fuel_cost'].iloc[0]
         
-        # Correction de la logique de la boucle: len(self.visited) - 1 est le nombre de segments
         total = sum(delta_m(self.visited[i], self.visited[i+1]) for i in range(len(self.visited) - 1))
         return float(c_f*total)
         
     def c_radius(self) -> float:
-        # Correction du bug d'indexation: Utilisation de loc au lieu de iloc
         c_r = vehicles.loc[vehicles['family'] == self.family, 'radius_cost'].iloc[0]
         
-        # Correction de la logique de la boucle: len(self.visited) est le nombre de points
         max_val = 0.0
         if len(self.visited) > 1:
             max_val = max(delta_e(self.visited[i], self.visited[j]) 
                           for i in range(len(self.visited)) 
                           for j in range(i+1, len(self.visited)))
         
-        # print(max_val) # Commenté pour éviter l'affichage
         return float((c_r/4)*(max_val**2))
         
     def transported_weight(self) -> int :
-        # Correction de l'indexation: Utilisation de loc pour trouver le poids par ID
         weight = 0
         for customer_id in self.visited[1:]: # Commence à 1 pour exclure le dépôt (ID 0)
             weight += dataset_1.loc[dataset_1['id'] == customer_id, 'order_weight'].iloc[0]
