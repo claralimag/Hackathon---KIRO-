@@ -1,22 +1,41 @@
 import pandas as pd 
 from math import *
 import numpy as np 
-from dowload_data import dataset_1, vehicles
 
-instance1 = dataset_1
+vehicles_path = '/Users/antoinechosson/Desktop/KIRO2025/instances/vehicles.csv'
+instance1_path = '/Users/antoinechosson/Desktop/KIRO2025/instances/instance_01.csv'
+instance2_path = '/Users/antoinechosson/Desktop/KIRO2025/instances/instance_02.csv'
+instance3_path = '/Users/antoinechosson/Desktop/KIRO2025/instances/instance_03.csv'
+instance4_path = '/Users/antoinechosson/Desktop/KIRO2025/instances/instance_04.csv'
+instance5_path = '/Users/antoinechosson/Desktop/KIRO2025/instances/instance_05.csv'
+instance6_path = '/Users/antoinechosson/Desktop/KIRO2025/instances/instance_06.csv'
+instance7_path = '/Users/antoinechosson/Desktop/KIRO2025/instances/instance_07.csv'
+instance8_path = '/Users/antoinechosson/Desktop/KIRO2025/instances/instance_08.csv'
+instance9_path = '/Users/antoinechosson/Desktop/KIRO2025/instances/instance_09.csv'
+instance10_path = '/Users/antoinechosson/Desktop/KIRO2025/instances/instance_10.csv'
+
+
+vehicles = pd.read_csv(vehicles_path)
+instance1 = pd.read_csv(instance1_path)
+instance2 = pd.read_csv(instance2_path)
+instance3 = pd.read_csv(instance3_path)
+instance4 = pd.read_csv(instance4_path)
+instance5 = pd.read_csv(instance5_path)
+instance6 = pd.read_csv(instance6_path)
+instance7 = pd.read_csv(instance7_path)
+instance8 = pd.read_csv(instance8_path)
+instance9 = pd.read_csv(instance9_path)
+instance10 = pd.read_csv(instance10_path)
 
 ############################################################
 
 def gamma(f,t):
     res = 0
     w = (2*pi)/86400
-    vehicle_row = vehicles.loc[vehicles['family'] == f].iloc[0]
-
     for n in range (0,4): 
-        alpha_f_n = vehicle_row['fourier_cos_'+ str(n)]
-        beta_f_n = vehicle_row['fourier_sin_'+ str(n)]
+        alpha_f_n = vehicles.iloc[f]['fourier_cos_'+ str(n)]
+        beta_f_n = vehicles.iloc[f]['fourier_sin_'+ str(n)]
         res += alpha_f_n*cos(n*w*t) + beta_f_n*sin(n*w*t)
-
     return res
 
 
@@ -31,32 +50,25 @@ def convert_y(lambda_i, lambda_j):
     return ro*(cos(((2*pi)/360)*phi_0))*((2*pi/360)*(lambda_j-lambda_i))
 
 
-def travel_time(f,i,j,t): 
-    # Suppression de l'indexation non robuste (vehicle_idx = f - 1)
-    phi_i, lambda_i = dataset_1.iloc[i]['latitude'], dataset_1.iloc[i]['longitude']
-    phi_j, lambda_j = dataset_1.iloc[j]['latitude'], dataset_1.iloc[j]['longitude']
-    
-    # Appel à gamma avec l'ID de famille (f)
-    speed_factor = gamma(f, t) 
-    
-    # Recherche robuste des propriétés du véhicule
-    vehicle_row = vehicles.loc[vehicles['family'] == f].iloc[0]
-    base_speed = vehicle_row['speed']
+def travel_time(f,i,j,t, instance): 
+    vehicle_idx = f - 1  
+    phi_i, lambda_i = instance.iloc[i]['latitude'], instance.iloc[i]['longitude']
+    phi_j, lambda_j = instance.iloc[j]['latitude'], instance.iloc[j]['longitude']
+    speed_factor = gamma(vehicle_idx, t) 
+    base_speed = vehicles.iloc[vehicle_idx]['speed']
     actual_speed = base_speed * speed_factor 
-    
     manhattan_dist = abs(convert_x(phi_i, phi_j)) + abs(convert_y(lambda_i, lambda_j)) 
-    p_f = vehicle_row['parking_time']
-    
+    p_f = vehicles.iloc[vehicle_idx]['parking_time']
     return manhattan_dist/actual_speed + p_f
 
-def delta_m(i,j): 
-    phi_i, lambda_i = instance1.iloc[i]['latitude'], instance1.iloc[i]['longitude']
-    phi_j, lambda_j = instance1.iloc[j]['latitude'], instance1.iloc[j]['longitude']
+def delta_m(i,j, instance): 
+    phi_i, lambda_i = instance.iloc[i]['latitude'], instance.iloc[i]['longitude']
+    phi_j, lambda_j = instance.iloc[j]['latitude'], instance.iloc[j]['longitude']
     return abs(convert_x(phi_i, phi_j)) + abs(convert_y(lambda_i, lambda_j)) 
 
-def delta_e(i,j): 
-    phi_i, lambda_i = instance1.iloc[i]['latitude'], instance1.iloc[i]['longitude']
-    phi_j, lambda_j = instance1.iloc[j]['latitude'], instance1.iloc[j]['longitude']
+def delta_e(i,j, instance): 
+    phi_i, lambda_i = instance.iloc[i]['latitude'], instance.iloc[i]['longitude']
+    phi_j, lambda_j = instance.iloc[j]['latitude'], instance.iloc[j]['longitude']
     return sqrt(abs(convert_x(phi_i, phi_j))**2 + abs(convert_y(lambda_i, lambda_j))**2)
 
 def delta_M(instance): 
@@ -67,7 +79,7 @@ def delta_M(instance):
     M = np.zeros((n_locations, n_locations))
     for i in range(n_locations): 
         for j in range(n_locations): 
-            M[i,j] = delta_m(i,j)
+            M[i,j] = delta_m(i,j, instance)
     return M
 
 
@@ -79,7 +91,7 @@ def delta_E(instance):
     E = np.zeros((n_locations, n_locations))
     for i in range(n_locations): 
         for j in range(n_locations): 
-            E[i,j] = delta_e(i,j)
+            E[i,j] = delta_e(i,j, instance)
     return E
 
 M1 = delta_M(instance1)
@@ -100,22 +112,22 @@ def is_feasible(route, f, instance):
     if route[0] != 0 or route[-1] != 0 : 
         return False 
     
-    # Total order weight constraint 
+    # Total order weight constraint - FIXED
     total_weight = 0
-    for i in range(n): 
+    for i in route[1:-1]:  # Skip depot (first and last elements)
         total_weight += instance.iloc[i]['order_weight']
     if total_weight > vehicles.iloc[vehicle_idx]['max_capacity']:
         return False 
     
     #### Time constraints ####
 
-    d = 0 # initally t = 0 at depot 
+    d = 0 # initially t = 0 at depot 
 
     for k in range(n-1): 
         current_order = route[k]
         next_order = route[k+1]
 
-        arrival_next = d + travel_time(f, current_order, next_order, d)
+        arrival_next = d + travel_time(f, current_order, next_order, d, instance)
 
         if next_order == 0 : 
             pass # if we are at depot : route finished, nothing to check 
@@ -194,27 +206,24 @@ def solution_cost(R, instance):
     return tot_cost 
 
 def is_solution_feasible(R, instance): 
-    visited = set() # set of all delivery points visited 
-    # check each individual route 
+    visited = set()
     for r in R : 
-        # route feasible  
         f = R[r]['family']
         route = R[r]['route']
         if is_feasible(route, f, instance) == False : 
             return False, f"route {r} is infeasible"
     
-        # unique service for each drop point 
         for delivery_point in route[1:-1]:
             if delivery_point in visited:
                 return False, f"delivery {delivery_point} visited more than once"
             visited.add(delivery_point)
 
-    # All delivery points must be visited
-    all_deliveries = set(instance[instance['id'] != 0].index)
+    # Fixed: Use get_deliveries() function instead
+    all_deliveries = set(get_deliveries(instance))
     missing = all_deliveries - visited
     if len(missing) > 0:
-        return False, f"{missing} Missing orders"
-    return True 
+        return False, f"Missing orders: {missing}"
+    return True, "Solution is feasible"
 
 ############################################################
 ### First simple Heuristic ###
@@ -264,5 +273,63 @@ def build_solution(instance):
             current_route.insert(-1, next_delivery) # add just before depot the delivery node 
             unvisited.remove(next_delivery)
         r += 1
-        
+
     return R
+
+
+### Formating solution before sending instance ### 
+
+def export_routes_csv(R, path="routes.csv"):
+
+    routes_list = []
+    max_len = 0
+
+    for r in sorted(R.keys()):
+        fam = R[r]["family"]
+        route = R[r]["route"]
+        delivery_points = [node for node in route if node != 0]
+        max_len = max(max_len, len(delivery_points))
+        routes_list.append([fam] + delivery_points)
+
+    df = pd.DataFrame(routes_list)
+    df = df.apply(lambda col: col.fillna(""))
+
+    df = df.applymap(lambda x: "" if x == "" else str(int(x)))
+
+    df.columns = ["family"] + [f"order_{i}" for i in range(1, max_len + 1)]
+    df.to_csv(path, index=False)
+
+
+R1 = build_solution(instance1)
+export_routes_csv(R1, path="routes1.csv")
+
+R2 = build_solution(instance2)
+export_routes_csv(R2, path="routes2.csv")
+
+R3 = build_solution(instance3)
+export_routes_csv(R3, path="routes3.csv")
+
+R4 = build_solution(instance4)
+export_routes_csv(R4, path="routes4.csv")
+
+R5 = build_solution(instance5)
+export_routes_csv(R5, path="routes5.csv")
+
+R6 = build_solution(instance6)
+export_routes_csv(R6, path="routes6.csv")
+
+R7 = build_solution(instance7)
+export_routes_csv(R7, path="routes7.csv")
+
+R8 = build_solution(instance8)
+export_routes_csv(R8, path="routes8.csv")
+
+R9 = build_solution(instance9)
+export_routes_csv(R9, path="routes9.csv")
+
+R10 = build_solution(instance10)
+export_routes_csv(R10, path="routes10.csv")
+
+
+
+
