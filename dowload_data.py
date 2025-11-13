@@ -9,6 +9,7 @@ def download_data(file_path):
     return data
 
 dataset_1 = download_data('/workspaces/Hackathon---KIRO-/instances/instance_01.csv')
+vehicles = download_data('/workspaces/Hackathon---KIRO-/instances/vehicles.csv')
 
 # Look for missing data :
 print(dataset_1.info())
@@ -22,5 +23,6 @@ dataset_1['window_end'] = np.where(dataset_1['id'] == 0, 0, dataset_1['window_en
 
 print(dataset_1.info())
 print(dataset_1.head())
+
 
 
