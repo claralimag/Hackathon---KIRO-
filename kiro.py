@@ -39,3 +39,12 @@ def travel_time(f,i,j,t):
     p_f = vehicles.iloc[f]['parking_time']
     return manhattan_dist/speed + p_f
 
+def delta_m(i,j): 
+    phi_i, lambda_i = instance1.iloc[i]['latitude'], instance1.iloc[i]['longitude']
+    phi_j, lambda_j = instance1.iloc[j]['latitude'], instance1.iloc[j]['longitude']
+    return abs(convert_x(phi_i, phi_j)) + abs(convert_y(lambda_i, lambda_j)) 
+
+def delta_e(i,j): 
+    phi_i, lambda_i = instance1.iloc[i]['latitude'], instance1.iloc[i]['longitude']
+    phi_j, lambda_j = instance1.iloc[j]['latitude'], instance1.iloc[j]['longitude']
+    return sqrt(abs(convert_x(phi_i, phi_j))**2 + abs(convert_y(lambda_i, lambda_j))**2)
