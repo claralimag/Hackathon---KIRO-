@@ -10,10 +10,13 @@ instance1 = dataset_1
 def gamma(f,t):
     res = 0
     w = (2*pi)/86400
+    vehicle_row = vehicles.loc[vehicles['family'] == f].iloc[0]
+
     for n in range (0,4): 
-        alpha_f_n = vehicles.iloc[f]['fourier_cos_'+ str(n)]
-        beta_f_n = vehicles.iloc[f]['fourier_sin_'+ str(n)]
+        alpha_f_n = vehicle_row['fourier_cos_'+ str(n)]
+        beta_f_n = vehicle_row['fourier_sin_'+ str(n)]
         res += alpha_f_n*cos(n*w*t) + beta_f_n*sin(n*w*t)
+
     return res
 
 
@@ -29,14 +32,21 @@ def convert_y(lambda_i, lambda_j):
 
 
 def travel_time(f,i,j,t): 
-    vehicle_idx = f - 1  
-    phi_i, lambda_i = instance1.iloc[i]['latitude'], instance1.iloc[i]['longitude']
-    phi_j, lambda_j = instance1.iloc[j]['latitude'], instance1.iloc[j]['longitude']
-    speed_factor = gamma(vehicle_idx, t) 
-    base_speed = vehicles.iloc[vehicle_idx]['speed']
+    # Suppression de l'indexation non robuste (vehicle_idx = f - 1)
+    phi_i, lambda_i = dataset_1.iloc[i]['latitude'], dataset_1.iloc[i]['longitude']
+    phi_j, lambda_j = dataset_1.iloc[j]['latitude'], dataset_1.iloc[j]['longitude']
+    
+    # Appel à gamma avec l'ID de famille (f)
+    speed_factor = gamma(f, t) 
+    
+    # Recherche robuste des propriétés du véhicule
+    vehicle_row = vehicles.loc[vehicles['family'] == f].iloc[0]
+    base_speed = vehicle_row['speed']
     actual_speed = base_speed * speed_factor 
+    
     manhattan_dist = abs(convert_x(phi_i, phi_j)) + abs(convert_y(lambda_i, lambda_j)) 
-    p_f = vehicles.iloc[vehicle_idx]['parking_time']
+    p_f = vehicle_row['parking_time']
+    
     return manhattan_dist/actual_speed + p_f
 
 def delta_m(i,j): 
