@@ -1,0 +1,24 @@
+#defining route class
+import numpy as np
+class Route:
+    def __init__(self,family: int, n_orders:int, visited : list[int], arrival_times : list[int], departure_times: list[int]):
+        self.family = family
+        self.n_orders = n_orders
+        self.visited = visited
+        self.arrival_times = arrival_times
+        self.departure_times = departure_times
+    def c_rental(self) -> int:
+        return vehicles.loc[vehicles['family'] == self.family, 'rental_cost'].iloc[0]
+    def c_fuel(self) -> int:
+        c_f = vehicles.loc[vehicles['family'] == self.family, 'fuel_cost'].iloc[0]
+        total = np.sum(delta_m(visited[:-1], visited[1:])) #if delta_m supports arrays
+        total = sum(delta_m(visited[i], visited[i+1]) for i in range(self.n_orders)) #otherwise
+        return c_f*total
+    def c_radius(self) -> int:
+        c_r = vehicles.loc[vehicles['family'] == self.family, 'radius_cost'].iloc[0]
+        max_val = max(delta_e(self.visited[i], self.visited[j]) 
+              for i in range(self.n_orders) 
+              for j in range(i+1, self.n_orders))
+        return (c_r/4)*max_val**2
+    def transported_weight(self) -> int :
+        return 0
