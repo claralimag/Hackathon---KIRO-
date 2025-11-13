@@ -75,8 +75,59 @@ def delta_E(instance):
             E[i,j] = delta_e(i,j)
     return E
 
+M1 = delta_M(instance1)
+E1 = delta_E(instance1)
 
 ############################################################
 
-def is_feasible(route, f): 
-    pass
+def is_feasible(route, f, instance):
+    """
+    Check if a route is feasible for a given vehicle family f 
+    """
+    vehicle_idx = f-1
+    n = len(route)
+
+    # Start and end at depot
+    if route[0] != 0 or route[-1] != 0 : 
+        return False 
+    
+    # Total order weight constraint 
+    total_weight = 0
+    for i in range(n): 
+        total_weight += instance.iloc[i]['order_weight']
+    if total_weight > vehicles.iloc[vehicle_idx]['max_capacity']
+        return False 
+    
+    #### Time constraints ####
+
+    d = 0 # initally t = 0 at depot 
+
+    for k in range(n-1): 
+        current_order = route[k]
+        next_order = route[k+1]
+
+        arrival_next = d + travel_time(f, current_order, next_order, d)
+
+        if next_order == 0 : 
+            pass # if we are at depot : route finished, nothing to check 
+        else : 
+
+            # get the delivery times window and duration of delivery 
+            start = instance.iloc[next_order]['window_start']
+            end = instance.iloc[next_order]['window_end']
+            delivery_duration = instance.iloc[next_order]['delivery_duration']
+
+            # Arriving too early -> arrival time becomes start time (wait until start time)
+            if arrival_next < start :
+                arrival_next = start 
+            # Arriving too late 
+            if arrival_next > end : 
+                return False 
+            
+            # update duration d by adding delivery duration 
+            d = arrival_next + delivery_duration
+    
+    return True 
+
+    
+    
