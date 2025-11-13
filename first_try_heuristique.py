@@ -205,8 +205,7 @@ def save_routes(routes, file_path):
     df.to_csv(file_path, index=False)
 
 # Example usage:
-save_routes(routes, '/workspaces/Hackathon---KIRO-/routes.csv')
+save_routes(routes, 'routes.csv')
 
 
-    
 
