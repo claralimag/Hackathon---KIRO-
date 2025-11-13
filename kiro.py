@@ -94,9 +94,6 @@ def delta_E(instance):
             E[i,j] = delta_e(i,j, instance)
     return E
 
-M1 = delta_M(instance1)
-E1 = delta_E(instance1)
-
 ############################################################
 ### Individual routes functions ###
 ############################################################
@@ -151,13 +148,11 @@ def is_feasible(route, f, instance):
     return True 
 
 
-def route_cost(route, f, instance): 
+def route_cost(route, f, instance, M, E): 
     """
     computes objective function for a given route and car family 
     """
     vehicle_idx = f-1
-    distancesM = delta_M(instance)
-    distancesE = delta_E(instance)
 
     # rental cost 
     c_rental = vehicles.iloc[vehicle_idx]['rental_cost']
@@ -166,7 +161,7 @@ def route_cost(route, f, instance):
     fuel_cost_per_meter = vehicles.iloc[vehicle_idx]['fuel_cost']
     c_fuel = 0 
     for k in range (len(route)-1): 
-        c_fuel += fuel_cost_per_meter*distancesM[route[k], route[k+1]]
+        c_fuel += fuel_cost_per_meter*M[route[k], route[k+1]]
     
     # eucledian radius penalty 
     radius_cost = vehicles.iloc[vehicle_idx]['radius_cost']
@@ -176,8 +171,8 @@ def route_cost(route, f, instance):
         for j in range(i + 1, len(delivery_points)):
             a = delivery_points[i]
             b = delivery_points[j]
-            max_euclidian_distance = max(max_euclidian_distance, distancesE[a, b])
-    c_radius = radius_cost*(0.5*max_euclidian_distance)**2
+            max_euclidian_distance = max(max_euclidian_distance, E[a, b])
+    c_radius = radius_cost*(0.5*max_euclidian_distance)
 
     return c_rental + c_fuel + c_radius 
 
@@ -188,7 +183,7 @@ def get_deliveries(instance):
 ### Global set of routes functions (solution) ###
 ############################################################
 
-def solution_cost(R, instance):  
+def solution_cost(R, instance, M, E):  
     """
     Computes total cost of a set of routes R
     Typical format for R : 
@@ -202,7 +197,7 @@ def solution_cost(R, instance):
     for r in R: 
         f = R[r]['family']
         route = R[r]['route']
-        tot_cost += route_cost(route, f, instance)
+        tot_cost += route_cost(route, f, instance, M, E)
     return tot_cost 
 
 def is_solution_feasible(R, instance): 
@@ -225,16 +220,14 @@ def is_solution_feasible(R, instance):
         return False, f"Missing orders: {missing}"
     return True, "Solution is feasible"
 
-############################################################
-### First simple Heuristic ###
-############################################################
 
-def next_feasible_node(previous_node, unvisited, f, current_route, instance):
+#### FIRST SIMPLE HEURISTIC ###
+
+def next_feasible_node(previous_node, unvisited, f, current_route, instance, M):
     """
     Looks for nearest delivery point (feasible) to add to current route 
     """
-    M = delta_M(instance)
-
+    # Use passed matrix instead of recomputing
     distances = []
     for node in unvisited:
         dist = M[previous_node][node] 
@@ -249,38 +242,143 @@ def next_feasible_node(previous_node, unvisited, f, current_route, instance):
         
     return None 
 
-
-def build_solution(instance):
+def build_solution_with_family(f, instance, M, E):
     """
     builds first simple solution 
     """
     R = {}
     r = 0
-    f = 1 
     unvisited = set(get_deliveries(instance))
 
     while unvisited : 
-        R[r] = {'family': 1, 'route': [0,0]} # initialize empty route
+        R[r] = {'family': f, 'route': [0,0]}
         current_route = R[r]['route']
 
-        while True : # while its possible to add new nodes to the route : 
+        while True : 
             prev_delivery = current_route[-2]
-            next_delivery = next_feasible_node(prev_delivery, unvisited, f, current_route, instance)
+            # Pass M to avoid recomputation
+            next_delivery = next_feasible_node(prev_delivery, unvisited, f, current_route, instance, M)
             
             if next_delivery is None : 
                 break 
 
-            current_route.insert(-1, next_delivery) # add just before depot the delivery node 
+            current_route.insert(-1, next_delivery)
             unvisited.remove(next_delivery)
         r += 1
 
     return R
 
+def build_solution(instance, M, E):
+    """
+    Try different vehicle families to find better solution
+    """
+    best_solution = None
+    best_cost = float('inf')
+    
+    num_families = len(vehicles)
+    
+    for f in range(1, num_families + 1):
+        try:
+            R = build_solution_with_family(f, instance, M, E)
+            cost = solution_cost(R, instance, M, E)
+            if cost < best_cost:
+                best_cost = cost
+                best_solution = R
+        except:
+            continue
+    
+    return best_solution
+
+### Upgrading solution with relocation ###
+
+def remove_node_from_route(route, node):
+    """
+    function that removes node from a given route 
+    """
+    new_route = route.copy()
+    new_route.remove(node)
+    return new_route
+
+def insert_everywhere(route, node):
+    """
+    insert a delivery between each deliveries of a route 
+    """
+    results = []
+    for delivery in range(1, len(route)):  
+        new_route = route[:delivery] + [node] + route[delivery:]
+        results.append(new_route)
+    return results
+
+def relocate_once(R, instance, M, E):
+    best_delta = 0
+    best_move = None 
+
+    # For each pair of routes
+    for r1 in R:
+        route1 = R[r1]["route"]
+        f1 = R[r1]["family"]
+
+        delivery1 = route1[1:-1] 
+        
+        # Skip if route has no deliveries
+        if len(delivery1) == 0:
+            continue
+
+        for node in delivery1:
+            new_r1 = remove_node_from_route(route1, node)
+            
+            # Skip if removing this node makes route invalid (must have at least depot-depot)
+            if len(new_r1) < 2:
+                continue
+
+            for r2 in R:
+                if r1 == r2:
+                    continue
+
+                route2 = R[r2]["route"]
+                f2 = R[r2]["family"]
+
+                # Try inserting node into r2 at all possible positions
+                for cand in insert_everywhere(route2, node):
+
+                    # Feasibility check
+                    if not is_feasible(new_r1, f1, instance): 
+                        continue
+                    if not is_feasible(cand, f2, instance):
+                        continue
+
+                    # Calculate cost improvement
+                    old_cost = route_cost(route1, f1, instance, M, E) + \
+                               route_cost(route2, f2, instance, M, E)
+                    new_cost = route_cost(new_r1, f1, instance, M, E) + \
+                               route_cost(cand, f2, instance, M, E)
+
+                    delta = old_cost - new_cost
+                    if delta > best_delta:
+                        best_delta = delta
+                        best_move = (r1, r2, node, new_r1, cand)
+
+    if best_move is None:
+        return False
+
+    # Apply best move
+    r1, r2, node, new_r1, new_r2 = best_move
+    R[r1]["route"] = new_r1
+    R[r2]["route"] = new_r2
+
+    return True
+
+def relocate_all(R, instance, M, E):
+    improvements = True
+    while improvements:
+        improvements = relocate_once(R, instance, M, E)
+    return R
+
+
 
 ### Formating solution before sending instance ### 
 
 def export_routes_csv(R, path="routes.csv"):
-
     routes_list = []
     max_len = 0
 
@@ -294,40 +392,62 @@ def export_routes_csv(R, path="routes.csv"):
     df = pd.DataFrame(routes_list)
     df = df.apply(lambda col: col.fillna(""))
 
-    df = df.applymap(lambda x: "" if x == "" else str(int(x)))
+    # Fix deprecated applymap -> use map instead
+    df = df.map(lambda x: "" if x == "" else str(int(x)))
 
     df.columns = ["family"] + [f"order_{i}" for i in range(1, max_len + 1)]
     df.to_csv(path, index=False)
 
 
-R1 = build_solution(instance1)
+M1, E1 = delta_M(instance1), delta_E(instance1)
+R1 = build_solution(instance1, M1, E1)
+R1 = relocate_all(R1, instance1, M1, E1)
+
 export_routes_csv(R1, path="routes1.csv")
 
-R2 = build_solution(instance2)
+M2, E2 = delta_M(instance2), delta_E(instance2)
+R2 = build_solution(instance2, M2, E2)
+R2 = relocate_all(R2, instance2, M2, E2)
 export_routes_csv(R2, path="routes2.csv")
 
-R3 = build_solution(instance3)
+M3, E3 = delta_M(instance3), delta_E(instance3)
+R3 = build_solution(instance3, M3, E3)
+R3 = relocate_all(R3, instance3, M3, E3)
 export_routes_csv(R3, path="routes3.csv")
 
-R4 = build_solution(instance4)
+M4, E4 = delta_M(instance4), delta_E(instance4)
+R4 = build_solution(instance4, M4, E4)
+R4 = relocate_all(R4, instance4, M4, E4)
 export_routes_csv(R4, path="routes4.csv")
 
-R5 = build_solution(instance5)
+M5, E5 = delta_M(instance5), delta_E(instance5)
+R5 = build_solution(instance5, M5, E5)
+R5 = relocate_all(R5, instance5, M5, E5)
 export_routes_csv(R5, path="routes5.csv")
 
-R6 = build_solution(instance6)
+M6, E6 = delta_M(instance6), delta_E(instance6)
+R6 = build_solution(instance6, M6, E6)
+R6 = relocate_all(R6, instance6, M6, E6)
 export_routes_csv(R6, path="routes6.csv")
 
-R7 = build_solution(instance7)
+M7, E7 = delta_M(instance7), delta_E(instance7)
+R7 = build_solution(instance7, M7, E7)
+R7 = relocate_all(R7, instance7, M7, E7)
 export_routes_csv(R7, path="routes7.csv")
 
-R8 = build_solution(instance8)
+M8, E8 = delta_M(instance8), delta_E(instance8)
+R8 = build_solution(instance8, M8, E8)
+R8 = relocate_all(R8, instance8, M8, E8)
 export_routes_csv(R8, path="routes8.csv")
 
-R9 = build_solution(instance9)
+M9, E9 = delta_M(instance9), delta_E(instance9)
+R9 = build_solution(instance9, M9, E9)
+R9 = relocate_all(R9,instance9, M9, E9)
 export_routes_csv(R9, path="routes9.csv")
 
-R10 = build_solution(instance10)
+M10, E10 = delta_M(instance10), delta_E(instance10)
+R10 = build_solution(instance10, M10, E10)
+R10 = relocate_all(R10, instance10, M10, E10)
 export_routes_csv(R10, path="routes10.csv")
 
 
